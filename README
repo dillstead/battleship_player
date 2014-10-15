@@ -1,0 +1,4 @@
+- Make sure to have Python version 3.x installed.
+- For information on how to run the script:
+python ./src/battleship_player.py -h
+

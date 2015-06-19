@@ -1,7 +1,7 @@
 import random
+import heapq
 import logging
 from collections import namedtuple
-from priority_queue import PriorityQueue
 
 """Stores x and y values of the enemy board positions."""
 Coordinates = namedtuple('Coordinates', 'x y')
@@ -48,6 +48,30 @@ class ShotSelector:
         self.enemyBoard = [[BoardState.OPEN for j in range(boardDimensions)] for i in range(boardDimensions)]
         self.boardDimensions = boardDimensions
         self.shipsAfloat = shipsAfloat
+        
+    def printShipsAfloat(self):
+        """For debugging purposes, prints the remaining ships afloat.
+        """
+        logging.debug("ships afloat")
+        sb = []
+        for size in self.shipsAfloat:
+            number = self.shipsAfloat[size]
+            sb.append(str(size))
+            sb.append(":")
+            sb.append(str(number))
+            sb.append(" ")
+        logging.debug("".join(sb))
+        
+    def printBoard(self):
+        """For debugging purposes, prints the board.
+        """
+        logging.debug("enemy board")
+        for i in range(self.boardDimensions):
+            sb = []
+            for j in range(self.boardDimensions):
+                sb.append(str(self.enemyBoard[i][j]))
+                sb.append(" ")
+            logging.debug("".join(sb))
             
     def selectShot(self):
         """Selects the next shot to take.
@@ -84,11 +108,12 @@ class ShotSelector:
     
     def mapToCoordinates(self, shot):
         """Maps a shot to x and y coordinates."""
-        return Coordinates(int(shot[1:]) - 1, ord(shot[0]) - ord("A")) 
+        toks = shot.split("-")
+        return Coordinates(ord(toks[0]) - ord("A"), int(toks[1]) - 1) 
         
     def mapToShot(self, coordinates):
         """Maps x and y coordinates to a shot."""
-        return chr(coordinates.y + ord("A")) + str(coordinates.x + 1)
+        return chr(coordinates.x + ord("A")) + "-" + str(coordinates.y + 1)
     
 """Implements a random shot selection strategy."""     
 class RandomShotSelector(ShotSelector):
@@ -121,7 +146,7 @@ as SUNK to preclude them in subsequent shot selections.  If there is more than o
 left as-is with the hope being that the next sinking ship will provide enough information to sink this ship.  Think of it like
 dominoes toppling. 
 """
-class MappingShotSelector:
+class MappingShotSelector(ShotSelector):
     def __init__(self, boardDimensions, shipsAfloat):
         """Builds the enemy board and keeps tracks of the remaining shots. 
         
@@ -131,7 +156,19 @@ class MappingShotSelector:
         """
         ShotSelector.__init__(self, boardDimensions, shipsAfloat)
         self.shipsToSink = []
-                        
+        
+    def printShipsToSink(self):
+        """For debugging purposes, prints the ships that are sinking.
+        """
+        sb = []
+        for sinkingShip in self.shipsToSink:
+            shot = self.mapToShot(sinkingShip.bullseye)
+            sb.append(str(shot))
+            sb.append(":")
+            sb.append(str(sinkingShip.size))
+            sb.append(" ")
+        logging.debug("".join(sb))
+                             
     def selectShot(self):
         """ Weights the board and returns the highest weighted shot.
 
@@ -139,6 +176,7 @@ class MappingShotSelector:
         A shot of the form LetterNumber.
         """
         self.weightBoard()
+        self.printBoard()
         bestCoordinates = self.selectBestCoordinates()
         shot = self.mapToShot(bestCoordinates)
         logging.debug("select shot: %s" % (shot))
@@ -208,15 +246,20 @@ class MappingShotSelector:
         Return
         bestCoordinates - The highest weighted coordinates.
         """
-        coordinatesQueue = PriorityQueue()
+        coordinatesQueue = []
+        # It's highly likely that there are going to be a lot of coordinates with the same "most" weight.  Rather
+        # than always choosing the leftmost coordinates, make a random choice by adding a random tie breaker to the 
+        # priority.  
+        randomTieBreaker = [i for i in range(self.boardDimensions ** 2 )]
+        random.shuffle(randomTieBreaker)
         for i in range(self.boardDimensions):
             for j in range(self.boardDimensions):
                 if self.enemyBoard[i][j] > BoardState.OPEN:
-                    coordinatesQueue.push(Coordinates(i, j), self.enemyBoard[i][j])
-        bestCoordinates = coordinatesQueue.pop()
+                    heapq.heappush(coordinatesQueue, (-self.enemyBoard[i][j], randomTieBreaker.pop(), Coordinates(i, j)))
+        bestCoordinates = heapq.heappop(coordinatesQueue)[-1]
         self.enemyBoard[bestCoordinates.x][bestCoordinates.y] = BoardState.OPEN
-        while not coordinatesQueue.empty():
-            coordinates = coordinatesQueue.pop()
+        while len(coordinatesQueue) > 0:
+            coordinates = heapq.heappop(coordinatesQueue)[-1]
             # Reset the weights on all coordinates under consideration so they'll be ready for another round of 
             # weighting.
             self.enemyBoard[coordinates.x][coordinates.y] = BoardState.OPEN
@@ -235,6 +278,8 @@ class MappingShotSelector:
         if sunk:
             self.shipsToSink.append(SinkingShip(coordinates, sunk))
             self.sinkShips()
+        self.printShipsAfloat()
+        self.printShipsToSink()
             
     def sinkShips(self):
         """Attempts to sink all sinking ships by positioning them in all possible positions .  

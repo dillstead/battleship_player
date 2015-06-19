@@ -5,7 +5,6 @@ from shot_selector import SinkingShip
 from shot_selector import BoardState
 from collections import Counter
 from collections import namedtuple
-from priority_queue import PriorityQueue
 
 class MappingTestCase(unittest.TestCase):
     def obstacles(self, state):
